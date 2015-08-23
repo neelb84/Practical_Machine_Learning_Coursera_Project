@@ -1,0 +1,141 @@
+---
+title: "Practical Machine Learning - Week 3 Course Project"
+output: html_document
+---
+
+### Background and Objective
+
+#####6 participants in a fitness project are asked to perform barbell lifts correctly and incorrectly in 5 different ways.The data is collected from accelerometers on the belt, forearm, arm, and dumbell of the participants.
+
+#####The goal is to predict the manner in which they did the exercise. 
+
+### Pulling the Data
+
+##### Download the training and testing data from the given data sources links
+
+```{r}
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",destfile="./acctrain.csv")
+
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",destfile="./acctest.csv")
+```
+
+##### Read the training and testing data from Working Directory. 
+```{r}
+acctrain<-read.csv("acctrain.csv",na.strings=c("NA","#DIV/0!",""))
+
+acctest<-read.csv("acctest.csv",na.strings=c("NA","#DIV/0!",""))
+
+```
+
+### Explore and Clean Data
+
+
+##### Training dataset has 19622 records and 160 columns and test dataset has 20 records and 160 columns.
+
+```{r}
+
+colNA<-colMeans(is.na(acctrain))
+
+```
+##### Lots of columns in the traing data have NA (missings) percentage greater than 97%. Imputing for missing values in these cases are futile so should remove these columns.
+
+```{r}
+
+acctrain2<-acctrain[,colMeans(is.na(acctrain))<.97]
+
+```
+ 
+##### After removing columns with high no. of missing values, Training dataset has 19622 records and 60 columns. 
+ 
+##### Same operation on test data, Testing dataset has 20 records and 60 columns. 
+ 
+```{r}
+
+acctest2<-acctest[,colMeans(is.na(acctest))<.97]
+
+```
+ 
+####Keeping only the accelerometer related data in the training and test datasets. According to problem statement - 'your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants'
+
+#####Note that dropping the 'Problem_ID' column from testing dataset as it is not required.
+
+
+```{r}
+
+acctrain3<-acctrain2[,c(grep("belt|forearm|arm|dumbbell",names(acctrain2)),ncol(acctrain2))]
+
+acctest3<-acctest2[,c(grep("belt|forearm|arm|dumbbell",names(acctest2)))]
+```
+
+
+### Creating Training Data Partition to create a Cross-Validation Dataset using Caret library
+
+##### Creating a 60%-40% split
+
+```{r}
+library(caret)
+
+set.seed(15390)
+
+inTrain <- createDataPartition(acctrain3$classe, p = .6, list=FALSE)
+trainingdata <- acctrain3[inTrain,]
+testingdata <- acctrain3[-inTrain,]
+
+```
+
+### Training the Model on 60% data
+
+##### Run the Random Forest model using the reduced set of predictors to predict the 'classe' variable and evaluate how well it works predicting the training sample
+
+```{r}
+library(randomForest)
+
+trctrl=trainControl(method="cv",10,repeats=5)
+
+rfFit <- randomForest(classe ~., 
+                       trControl=trctrl,
+                       data=trainingdata, 
+                       ntree=500, 
+                       imp=TRUE)
+
+varImpPlot(rfFit)
+
+trpred <- predict(rfFit, trainingdata)
+
+confusionMatrix( trainingdata$classe,trpred)
+
+```
+
+#### Accuracy of the model on training data looks good, now time for validating it on the hold-out sample.
+
+### Validate the Model on 40% data
+
+##### Fit the hold-out validation sample with the training RF model
+
+```{r}
+testpred <- predict(rfFit, testingdata)
+
+confusionMatrix( testingdata$classe, testpred)
+
+```
+
+#### Obtained accuracy of 99.38%, which means an error of 0.62% in the hold-out sample. The model looks good enough to use on the 20 test data points.
+
+###Predict the classe for the 20 test sample 
+
+```{r}
+
+finaltestpred <- as.character(predict(rfFit, acctest3))
+
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(finaltestpred)
+
+```
